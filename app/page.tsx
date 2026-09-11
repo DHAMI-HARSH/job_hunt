@@ -43,43 +43,57 @@ function cleanDescription(description: string) {
 
 export default function Home() {
   const [keyword, setKeyword] = useState(initialKeyword);
+  const [location, setLocation] = useState("India");
+  const [experience, setExperience] = useState("");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [count, setCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [expandedJobId, setExpandedJobId] = useState<string | number | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [seenIds, setSeenIds] = useState<string[]>([]);
 
-  const loadJobs = useCallback(async (requestedKeyword: string) => {
-    setLoading(true);
+  const loadJobs = useCallback(async (requestedKeyword: string, requestedLocation: string, requestedExperience: string, requestedPage = 1, append = false) => {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError("");
     try {
       const params = new URLSearchParams({ keyword: requestedKeyword.trim() || initialKeyword });
+      if (requestedLocation.trim()) params.set("location", requestedLocation.trim());
+      if (requestedExperience) params.set("experience", requestedExperience);
+      params.set("page", String(requestedPage));
       const response = await fetch(`/api/jobs?${params.toString()}`);
       const data = (await response.json()) as ApiResponse;
       if (!response.ok) throw new Error(data.error || "Could not load jobs.");
-      setJobs(data.jobs || []);
+      setJobs((currentJobs) => append ? [...currentJobs, ...(data.jobs || [])] : data.jobs || []);
       setCount(data.count || data.jobs?.length || 0);
+      setPage(requestedPage);
     } catch (requestError) {
       setJobs([]);
       setCount(0);
       setError(requestError instanceof Error ? requestError.message : "Could not load jobs.");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
   async function searchJobs(event?: FormEvent, nextKeyword?: string) {
     event?.preventDefault();
-    await loadJobs(nextKeyword ?? keyword);
+    await loadJobs(nextKeyword ?? keyword, location, experience, 1, false);
+  }
+
+  async function loadMoreJobs() {
+    await loadJobs(keyword, location, experience, page + 1, true);
   }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const requestedKeyword = new URLSearchParams(window.location.search).get("keyword")?.trim() || initialKeyword;
       setKeyword(requestedKeyword);
-      void loadJobs(requestedKeyword);
+      void loadJobs(requestedKeyword, "India", "", 1, false);
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadJobs]);
@@ -125,6 +139,8 @@ export default function Home() {
         <p className="hero-copy">Search thousands of fresh roles and get to the application in one click.</p>
         <form className="search-panel" onSubmit={searchJobs}>
           <label className="search-field search-field-keyword"><span className="field-icon">⌕</span><span className="sr-only">Keywords</span><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="Job title, skill, or keyword" /></label>
+          <label className="search-field"><span className="field-icon">⌖</span><span className="sr-only">Location</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Location" /></label>
+          <label className="search-field filter-field"><span className="sr-only">Experience</span><select value={experience} onChange={(event) => setExperience(event.target.value)}><option value="">Any experience</option><option value="entry">Entry level</option><option value="mid">Mid level</option><option value="senior">Senior / lead</option></select></label>
           <button className="search-button" type="submit" disabled={loading}>{loading ? "Searching…" : "Search jobs"}<span aria-hidden="true">→</span></button>
         </form>
         <div className="popular-searches"><span>Popular:</span><button type="button" onClick={() => { setKeyword("frontend developer"); void searchJobs(undefined, "frontend developer"); }}>Frontend developer</button><button type="button" onClick={() => { setKeyword("product designer"); void searchJobs(undefined, "product designer"); }}>Product designer</button><button type="button" onClick={() => { setKeyword("data analyst"); void searchJobs(undefined, "data analyst"); }}>Data analyst</button></div>
@@ -138,6 +154,7 @@ export default function Home() {
           <div className="job-tags"><span>{job.category || "Open role"}</span>{job.contractType && <span>{job.contractType}</span>}</div><h3>{job.title}</h3><p className="company-name">{job.company || "Company not listed"}</p><p className="job-location"><span aria-hidden="true">⌖</span>{job.location || "Location not listed"}</p><p className={`job-description ${isExpanded ? "expanded" : ""}`}>{cleanDescription(job.description)}</p><button className="details-button" type="button" onClick={() => setExpandedJobId(isExpanded ? null : job.id)}>{isExpanded ? "Hide details" : "View details"}<span aria-hidden="true">{isExpanded ? "↑" : "↓"}</span></button>
           <div className="job-footer"><div className="job-markers"><button className={`marker-button ${favoriteIds.includes(String(job.id)) ? "active" : ""}`} type="button" onClick={() => toggleFavorite(job)} aria-label={favoriteIds.includes(String(job.id)) ? "Remove favourite" : "Add favourite"}>♡</button><button className={`marker-button ${seenIds.includes(String(job.id)) ? "active" : ""}`} type="button" onClick={() => toggleSeen(job)}>{seenIds.includes(String(job.id)) ? "Seen" : "Mark seen"}</button></div><div className="job-footer-right">{salary ? <span className="salary">{salary}</span> : <span className="salary muted">Salary not listed</span>}<a className="apply-button" href={job.url} target="_blank" rel="noreferrer">Fast apply <span aria-hidden="true">↗</span></a></div></div>
         </article>; })}</div> : !error && <div className="empty-state"><span className="empty-icon">⌕</span><h3>No roles found</h3><p>Try a broader keyword or search in a different location.</p></div>}
+        {!loading && jobs.length > 0 && jobs.length < count && <div className="load-more-wrap"><button className="load-more-button" type="button" onClick={() => void loadMoreJobs()} disabled={loadingMore}>{loadingMore ? "Loading more…" : "Load more jobs"}<span aria-hidden="true">↓</span></button><span>Showing {jobs.length.toLocaleString()} of {count.toLocaleString()} jobs</span></div>}
       </section>
       <footer><span>job scout</span><span>Search smarter. Apply faster.</span></footer>
     </main>
